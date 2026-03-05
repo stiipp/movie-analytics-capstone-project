@@ -215,3 +215,5 @@ dbt/.user.yml
 
 # Airflow
 airflow/logs/
+
+data/
