@@ -1,0 +1,25 @@
+name: "capstone_movie_analytics"
+version: "1.0.0"
+config-version: 2
+
+profile: "capstone_movie_analytics"
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+analysis-paths: ["analyses"]
+macro-paths: ["macros"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  capstone_movie_analytics:
+    staging:
+      +materialized: view
+      +schema: capstone_movie_analytics_staging
+    marts:
+      +materialized: table
+      +schema: capstone_movie_analytics_marts
