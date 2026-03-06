@@ -19,7 +19,7 @@ models:
   capstone_movie_analytics:
     staging:
       +materialized: view
-      +schema: capstone_movie_analytics_staging
+      +schema: silver
     marts:
       +materialized: table
-      +schema: capstone_movie_analytics_marts
+      +schema: gold
