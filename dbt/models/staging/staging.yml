@@ -1,0 +1,57 @@
+version: 2
+
+models:
+  - name: stg_movies
+    columns:
+      - name: movie_id
+        tests:
+          - not_null
+          - unique
+
+  - name: stg_ratings
+    columns:
+      - name: movie_id
+        tests:
+          - not_null
+
+  - name: stg_movie_extended
+    columns:
+      - name: movie_id
+        tests:
+          - not_null
+
+  - name: stg_movie_genres
+    columns:
+      - name: movie_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_movies')
+              field: movie_id
+      - name: genre
+        tests:
+          - not_null
+
+  - name: stg_movie_companies
+    columns:
+      - name: movie_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_movies')
+              field: movie_id
+      - name: company
+        tests:
+          - not_null
+
+  - name: stg_movie_countries
+    columns:
+      - name: movie_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_movies')
+              field: movie_id
+      - name: country
+        tests:
+          - not_null

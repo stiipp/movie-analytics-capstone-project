@@ -1,0 +1,16 @@
+version: 2
+
+sources:
+  - name: silver_base
+    schema: silver_base
+    tables:
+      - name: movies
+      - name: ratings
+      - name: movie_extended
+  - name: gold_prep
+    schema: gold_prep
+    tables:
+      - name: movie_enriched
+      - name: movie_genres
+      - name: movie_companies
+      - name: movie_countries
