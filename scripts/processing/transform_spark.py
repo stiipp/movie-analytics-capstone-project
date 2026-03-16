@@ -15,7 +15,7 @@ import logging
 import os
 from pathlib import Path
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 from pyspark import StorageLevel
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
@@ -88,8 +88,28 @@ def read_table(spark: SparkSession, table_name: str):
 
 
 def write_table(df, table_name: str) -> None:
+    """
+    Write Spark DataFrame to Postgres without dropping table objects.
+
+    Using Spark JDBC mode("overwrite") triggers DROP TABLE, which fails when
+    downstream views depend on the table. To keep dependencies intact, we:
+      1) TRUNCATE existing table if present
+      2) append current run's rows
+      3) create table only when it does not yet exist
+    """
+    engine = create_engine(db_url_sqlalchemy())
+    table_exists = inspect(engine).has_table(table_name, schema=TARGET_SCHEMA)
+
+    if table_exists:
+        with engine.begin() as conn:
+            conn.execute(text(f'TRUNCATE TABLE "{TARGET_SCHEMA}"."{table_name}"'))
+        write_mode = "append"
+        logger.info("Truncated existing table %s.%s before Spark load.", TARGET_SCHEMA, table_name)
+    else:
+        write_mode = "error"
+
     (
-        df.write.mode("overwrite")
+        df.write.mode(write_mode)
         .format("jdbc")
         .option("url", jdbc_url())
         .option("dbtable", f"{TARGET_SCHEMA}.{table_name}")
