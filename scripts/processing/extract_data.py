@@ -31,9 +31,17 @@ def extract_zip(zip_filename: str) -> None:
                 continue
 
             target_path = os.path.join(PROCESSED_DIR, filename)
-            with zf.open(member) as src, open(target_path, "wb") as dst:
-                dst.write(src.read())
-            print(f"[OK] Extracted -> {target_path}")
+            # Keep extraction idempotent for mounted volumes where files may be read-only.
+            if os.path.exists(target_path):
+                print(f"[SKIP] Already exists -> {target_path}")
+                continue
+
+            try:
+                with zf.open(member) as src, open(target_path, "wb") as dst:
+                    dst.write(src.read())
+                print(f"[OK] Extracted -> {target_path}")
+            except PermissionError:
+                print(f"[SKIP] No write permission -> {target_path}")
 
 
 if __name__ == "__main__":
