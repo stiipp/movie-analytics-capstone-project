@@ -1,0 +1,12 @@
+version: 2
+
+macros:
+  - name: generate_schema_name
+    description: Returns the model schema name, defaulting to target.schema when no custom schema is configured.
+    arguments:
+      - name: custom_schema_name
+        type: string
+        description: Optional schema configured on a model. If null, the target schema is used.
+      - name: node
+        type: object
+        description: dbt node object passed automatically by dbt during compilation.
