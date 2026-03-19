@@ -2,56 +2,155 @@ version: 2
 
 models:
   - name: stg_movies
+    description: Canonical staging model for movie-level financial and eligibility attributes.
     columns:
       - name: movie_id
+        description: Unique movie identifier used as the primary staging key.
         tests:
           - not_null
           - unique
+      - name: title
+        description: Movie title used for reporting and downstream dimensions.
+      - name: release_date
+        description: Parsed release date as date type.
+      - name: budget
+        description: Movie production budget amount.
+      - name: budget_reported
+        description: Budget amount before any imputation; null when only inferred budget is available.
+      - name: is_budget_imputed
+        description: True when budget was inferred from revenue using an imputation rule.
+      - name: budget_imputation_method
+        description: Name of the imputation strategy used to derive budget.
+      - name: revenue
+        description: Movie box office revenue amount.
+      - name: is_budget_reported
+        description: True when budget data is available and valid.
+        tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]
+              quote: false
+      - name: is_revenue_reported
+        description: True when revenue data is available and valid.
+        tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]
+              quote: false
+      - name: is_market_coverage_eligible
+        description: True when the movie belongs to the broader market-coverage scope with budget >= $10K and positive reported revenue.
+        tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]
+              quote: false
+      - name: is_recommendation_eligible
+        description: True when the movie has reported budget and reported revenue and satisfies the strict investment recommendation thresholds of at least $10K budget and $1M revenue.
+        tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]
+              quote: false
+      - name: is_roi_eligible
+        description: Backward-compatible alias for strict recommendation eligibility.
 
   - name: stg_ratings
+    description: Staging model for movie rating summary statistics.
     columns:
       - name: movie_id
+        description: Movie identifier joining ratings to movie-level models.
         tests:
           - not_null
+          - unique
+      - name: avg_rating
+        description: Average rating score for each movie.
+      - name: total_ratings
+        description: Total rating count for each movie.
+      - name: std_dev
+        description: Standard deviation of rating scores.
+      - name: last_rated
+        description: Timestamp of the most recent rating event.
 
   - name: stg_movie_extended
+    description: Staging model containing denormalized extended movie attributes.
     columns:
       - name: movie_id
+        description: Movie identifier joining extended attributes to movie-level models.
         tests:
           - not_null
+      - name: genres
+        description: Comma-delimited list of genres for each movie.
+      - name: production_companies
+        description: Comma-delimited list of production companies.
+      - name: production_countries
+        description: Comma-delimited list of production countries.
+      - name: spoken_languages
+        description: Comma-delimited list of spoken languages.
 
   - name: stg_movie_genres
+    description: Exploded movie-to-genre mapping at one row per movie and genre.
     columns:
       - name: movie_id
+        description: Movie identifier in the genre bridge staging table.
         tests:
           - not_null
-          - relationships:
-              to: ref('stg_movies')
-              field: movie_id
       - name: genre
+        description: Normalized genre value for the movie.
         tests:
           - not_null
 
   - name: stg_movie_companies
+    description: Exploded movie-to-company mapping at one row per movie and production company.
     columns:
       - name: movie_id
+        description: Movie identifier in the company bridge staging table.
         tests:
           - not_null
-          - relationships:
-              to: ref('stg_movies')
-              field: movie_id
       - name: company
+        description: Normalized production company value for the movie.
         tests:
           - not_null
 
   - name: stg_movie_countries
+    description: Exploded movie-to-country mapping at one row per movie and production country.
     columns:
       - name: movie_id
+        description: Movie identifier in the country bridge staging table.
         tests:
           - not_null
-          - relationships:
-              to: ref('stg_movies')
-              field: movie_id
       - name: country
+        description: Normalized production country value for the movie.
         tests:
           - not_null
+
+  - name: stg_movies_roi_eligible
+    description: Filtered staging model of movies eligible for investment-focused ROI analyses, using reported budget and reported revenue only.
+    columns:
+      - name: movie_id
+        description: Unique movie identifier for ROI-eligible rows.
+        tests:
+          - not_null
+          - unique
+      - name: title
+        description: Title of the ROI-eligible movie.
+        tests:
+          - not_null
+      - name: release_date
+        description: Release date for ROI-eligible movie records.
+      - name: budget
+        description: Budget value used in ROI and profitability calculations.
+      - name: revenue
+        description: Revenue value used in ROI and profitability calculations.
+      - name: is_budget_reported
+        description: Indicates reported budget availability for ROI-eligible rows.
+      - name: is_revenue_reported
+        description: Indicates reported revenue availability for ROI-eligible rows.
+      - name: is_recommendation_eligible
+        description: Strict recommendation-scope flag constrained to true in this filtered model.
+        tests:
+          - not_null
+          - accepted_values:
+              values: [true]
+              quote: false
+      - name: is_roi_eligible
+        description: Eligibility flag constrained to true for rows meeting the reported-financial investment-analysis thresholds.

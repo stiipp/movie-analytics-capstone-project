@@ -2,15 +2,86 @@ version: 2
 
 sources:
   - name: silver_base
+    description: Cleaned intermediate schema produced by the pandas cleaning pipeline.
     schema: silver_base
     tables:
       - name: movies
+        description: Canonical movie-level financial and eligibility attributes after cleaning.
+        columns:
+          - name: id
+            description: Raw movie identifier from source data.
+          - name: title
+            description: Movie title.
+          - name: release_date
+            description: Parsed release date for the movie.
+          - name: budget
+            description: Reported production budget amount.
+          - name: budget_reported
+            description: Budget amount from original/external reporting before any imputation.
+          - name: is_budget_imputed
+            description: True when budget was imputed from revenue-based rules.
+          - name: budget_imputation_method
+            description: Name of the method used for budget imputation.
+          - name: revenue
+            description: Reported box office revenue amount.
+          - name: is_budget_reported
+            description: True when budget is present and valid.
+          - name: is_revenue_reported
+            description: True when revenue is present and valid.
+          - name: is_market_coverage_eligible
+            description: True when a movie belongs to the broader market-coverage scope with budget >= $10K and positive reported revenue.
+          - name: is_recommendation_eligible
+            description: True when a movie belongs to the strict recommendation scope with reported budget, reported revenue, budget >= $10K, and revenue >= $1M.
+          - name: is_roi_eligible
+            description: Backward-compatible alias for strict recommendation eligibility.
       - name: ratings
+        description: Movie rating summary statistics flattened from nested ratings payloads.
+        columns:
+          - name: movie_id
+            description: Movie identifier linking ratings to movie entities.
+          - name: avg_rating
+            description: Average rating score across all ratings for a movie.
+          - name: total_ratings
+            description: Total number of ratings submitted for a movie.
+          - name: std_dev
+            description: Standard deviation of rating scores for a movie.
+          - name: last_rated
+            description: Timestamp of the latest rating event.
       - name: movie_extended
+        description: Extended movie attributes used for genre, company, and country dimensions.
+        columns:
+          - name: id
+            description: Movie identifier matching the movies table key.
+          - name: genres
+            description: Comma-delimited genre list for the movie.
+          - name: production_companies
+            description: Comma-delimited production company list for the movie.
+          - name: production_countries
+            description: Comma-delimited production country list for the movie.
+          - name: spoken_languages
+            description: Comma-delimited spoken language list for the movie.
   - name: gold_prep
+    description: Spark-transformed preparation schema used by staging models for many-to-many movie mappings.
     schema: gold_prep
     tables:
-      - name: movie_enriched
       - name: movie_genres
+        description: Exploded movie-to-genre mapping generated from silver_base.movie_extended.
+        columns:
+          - name: movie_id
+            description: Movie identifier.
+          - name: genre
+            description: Single normalized genre value.
       - name: movie_companies
+        description: Exploded movie-to-company mapping generated from silver_base.movie_extended.
+        columns:
+          - name: movie_id
+            description: Movie identifier.
+          - name: company
+            description: Single normalized production company value.
       - name: movie_countries
+        description: Exploded movie-to-country mapping generated from silver_base.movie_extended.
+        columns:
+          - name: movie_id
+            description: Movie identifier.
+          - name: country
+            description: Single normalized production country value.
