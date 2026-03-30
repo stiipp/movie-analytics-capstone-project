@@ -3,6 +3,7 @@ with dates as (
 		release_date::date as date_day
 	from {{ ref('stg_movies') }}
 	where release_date is not null
+      and is_roi_eligible = true
 )
 
 select
@@ -19,4 +20,3 @@ select
 		else false
 	end as is_weekend
 from dates
-

@@ -1,0 +1,503 @@
+version: 2
+
+models:
+  - name: dim_date
+    description: Date dimension derived from ROI-eligible movie release dates used in the investment-analysis layer.
+    columns:
+      - name: date_key
+        description: Surrogate integer key in YYYYMMDD format.
+        tests:
+          - not_null
+          - unique
+      - name: date_day
+        description: Calendar date value.
+        tests:
+          - not_null
+          - unique
+      - name: year
+        description: Calendar year from date_day.
+      - name: quarter
+        description: Calendar quarter number (1-4).
+      - name: month
+        description: Calendar month number (1-12).
+      - name: month_name
+        description: Calendar month name for display.
+      - name: day
+        description: Day of month.
+      - name: day_of_week
+        description: ISO day of week number.
+      - name: is_weekend
+        description: True when date_day is Saturday or Sunday.
+
+  - name: dim_movie
+    description: Movie dimension with financial and rating attributes at movie grain, limited to ROI-eligible investment-analysis rows.
+    columns:
+      - name: movie_id
+        description: Unique movie identifier.
+        tests:
+          - not_null
+          - unique
+      - name: title
+        description: Movie title.
+      - name: release_date
+        description: Movie release date.
+      - name: release_year
+        description: Release year derived from release_date.
+      - name: release_month
+        description: Release month number derived from release_date.
+      - name: budget
+        description: Reported budget value.
+      - name: budget_tier
+        description: Relative budget segmentation label used for analysis.
+      - name: budget_quartile
+        description: Relative budget quartile number (1=lowest, 4=highest).
+      - name: revenue
+        description: Reported revenue value.
+      - name: profit
+        description: Revenue minus budget when ROI eligible.
+      - name: roi
+        description: Return on investment ratio when ROI eligible.
+      - name: roi_pct
+        description: Return on investment percentage when ROI eligible.
+      - name: is_budget_reported
+        description: Budget completeness flag.
+      - name: is_revenue_reported
+        description: Revenue completeness flag.
+      - name: is_roi_eligible
+        description: ROI eligibility flag.
+      - name: avg_rating
+        description: Average movie rating.
+      - name: total_ratings
+        description: Number of ratings.
+      - name: std_dev
+        description: Rating standard deviation.
+      - name: last_rated
+        description: Timestamp of most recent rating.
+
+  - name: dim_budget_tier
+    description: Budget tier dimension kept as a lightweight lookup for reporting and Power BI slicing.
+    columns:
+      - name: budget_tier_key
+        description: Surrogate key for the budget tier dimension.
+        tests:
+          - not_null
+          - unique
+      - name: budget_tier
+        description: Budget tier label.
+        tests:
+          - not_null
+          - unique
+          - accepted_values:
+              values:
+                [
+                  "Low (Bottom Quartile)",
+                  "Lower-Mid (Second Quartile)",
+                  "Upper-Mid (Third Quartile)",
+                  "High (Top Quartile)",
+                ]
+      - name: budget_quartile
+        description: Relative budget quartile number.
+      - name: budget_tier_definition
+        description: Plain-language definition of the budget tier.
+
+  - name: dim_genre
+    description: Genre dimension used with the movie-genre bridge for flexible genre-based slicing beyond the core fact table.
+    columns:
+      - name: genre_key
+        description: Surrogate key for the genre dimension.
+        tests:
+          - not_null
+          - unique
+      - name: genre
+        description: Canonical genre label.
+        tests:
+          - not_null
+          - unique
+
+  - name: dim_company
+    description: Production company dimension used with the movie-company bridge for future studio and portfolio analysis.
+    columns:
+      - name: company_key
+        description: Deterministic surrogate key for the production company dimension.
+        tests:
+          - not_null
+          - unique
+      - name: company
+        description: Canonical production company name.
+        tests:
+          - not_null
+          - unique
+      - name: company_norm
+        description: Uppercased normalized company name used for deduplication and bridge joins.
+        tests:
+          - not_null
+          - unique
+
+  - name: dim_country
+    description: Production country dimension used with the movie-country bridge for geographic slicing and future expansion.
+    columns:
+      - name: country_key
+        description: Surrogate key for the production country dimension.
+        tests:
+          - not_null
+          - unique
+      - name: country
+        description: Canonical production country value.
+        tests:
+          - not_null
+          - unique
+
+  - name: fact_movie_performance
+    description: Core investment-analysis fact table at movie grain, limited to ROI-eligible rows.
+    columns:
+      - name: movie_id
+        description: Foreign key to dim_movie.
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_movie')
+              field: movie_id
+      - name: date_key
+        description: Foreign key to dim_date.
+        tests:
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: budget
+        description: Movie budget amount.
+      - name: budget_tier
+        description: Relative budget segmentation category for analysis.
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                [
+                  "Low (Bottom Quartile)",
+                  "Lower-Mid (Second Quartile)",
+                  "Upper-Mid (Third Quartile)",
+                  "High (Top Quartile)",
+                ]
+      - name: budget_quartile
+        description: Relative budget quartile number (1=lowest, 4=highest).
+      - name: revenue
+        description: Movie revenue amount.
+      - name: financial_data_status
+        description: Financial scope label for the gold investment-analysis fact table.
+      - name: profit
+        description: Revenue minus budget for ROI-eligible records.
+      - name: roi
+        description: Return on investment ratio.
+      - name: roi_pct
+        description: Return on investment percentage rounded to two decimals.
+      - name: is_budget_reported
+        description: Budget completeness flag.
+      - name: is_revenue_reported
+        description: Revenue completeness flag.
+      - name: is_roi_eligible
+        description: ROI eligibility flag.
+      - name: avg_rating
+        description: Average movie rating.
+      - name: total_ratings
+        description: Number of ratings for the movie.
+      - name: std_dev
+        description: Standard deviation of movie ratings.
+
+  - name: fact_movie_roi_analysis
+    description: ROI-focused fact view for profitability and ranking analyses, limited to financially eligible investment candidates.
+    columns:
+      - name: movie_id
+        description: Unique movie identifier and foreign key to dim_movie.
+        tests:
+          - not_null
+          - unique
+          - relationships:
+              to: ref('dim_movie')
+              field: movie_id
+      - name: title
+        description: Movie title for ranked outputs and reporting tables.
+        tests:
+          - not_null
+      - name: release_date
+        description: Movie release date.
+      - name: release_year
+        description: Release year.
+      - name: release_month
+        description: Release month.
+      - name: budget
+        description: Budget amount used for ROI calculations.
+      - name: budget_tier
+        description: Relative budget segmentation category.
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                [
+                  "Low (Bottom Quartile)",
+                  "Lower-Mid (Second Quartile)",
+                  "Upper-Mid (Third Quartile)",
+                  "High (Top Quartile)",
+                ]
+      - name: budget_quartile
+        description: Relative budget quartile number.
+      - name: revenue
+        description: Revenue amount used for ROI calculations.
+      - name: profit
+        description: Revenue minus budget.
+      - name: roi_pct
+        description: ROI percentage value rounded to two decimals.
+      - name: profitability_tier
+        description: Profitability bucket derived from ROI percentage thresholds.
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                [
+                  "Massive Hit (300%+)",
+                  "Strong Hit (100-300%)",
+                  "Profitable (0-100%)",
+                  "Loss (<0%)",
+                ]
+      - name: avg_rating
+        description: Average movie rating.
+      - name: total_ratings
+        description: Number of ratings.
+      - name: std_dev
+        description: Standard deviation of rating scores.
+
+  - name: fact_movie_market_coverage
+    description: Broader market-coverage fact view for genre distribution, volume trends, and catalog-level analysis using movies with at least $10K budget and positive reported revenue, while allowing imputed budgets from the enrichment pipeline.
+    columns:
+      - name: movie_id
+        description: Unique movie identifier for the broader market-coverage scope.
+        tests:
+          - not_null
+          - unique
+      - name: title
+        description: Movie title.
+        tests:
+          - not_null
+      - name: release_date
+        description: Movie release date.
+      - name: release_year
+        description: Release year derived from release_date.
+      - name: release_month
+        description: Release month derived from release_date.
+      - name: release_decade
+        description: Release decade derived from release_year.
+      - name: budget
+        description: Reported or imputed budget used for market-coverage filtering.
+      - name: revenue
+        description: Reported revenue used for market-coverage filtering.
+      - name: is_budget_reported
+        description: Budget reported flag; false rows may still be included when budget was imputed.
+      - name: is_revenue_reported
+        description: Revenue completeness flag.
+      - name: is_budget_imputed
+        description: Indicates whether budget was imputed.
+      - name: budget_imputation_method
+        description: Method used when budget was imputed.
+      - name: is_recommendation_eligible
+        description: True when the row also belongs to the stricter reported-financial investment recommendation scope.
+        tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]
+              quote: false
+      - name: benchmark_scope_label
+        description: Human-readable label for the market-coverage scope.
+      - name: avg_rating
+        description: Average movie rating.
+      - name: total_ratings
+        description: Number of ratings.
+      - name: std_dev
+        description: Standard deviation of rating scores.
+      - name: last_rated
+        description: Timestamp of most recent rating activity.
+      - name: genres
+        description: Comma-delimited genre list for broad market slicing.
+      - name: production_companies
+        description: Comma-delimited production company list for catalog analysis.
+      - name: production_countries
+        description: Comma-delimited production country list for catalog analysis.
+      - name: spoken_languages
+        description: Comma-delimited spoken language list for catalog analysis.
+
+  - name: fact_genre_budget_roi
+    description: Power BI-ready aggregate table answering which genre and budget-tier combinations deliver the strongest typical ROI among financially eligible movies.
+    columns:
+      - name: genre_budget_profile_key
+        description: Deterministic unique key for the genre-budget combination.
+        tests:
+          - not_null
+          - unique
+      - name: genre
+        description: Genre being analyzed.
+        tests:
+          - not_null
+      - name: budget_tier
+        description: Relative budget tier for the analysis slice.
+        tests:
+          - not_null
+      - name: budget_quartile
+        description: Relative budget quartile number.
+      - name: movie_count
+        description: Number of ROI-eligible movies in the slice.
+      - name: total_revenue
+        description: Total revenue generated by the slice.
+      - name: total_profit
+        description: Total profit generated by the slice.
+      - name: avg_roi_pct
+        description: Average ROI percentage for the slice.
+      - name: median_roi_pct
+        description: Median ROI percentage for the slice, used as the primary central tendency metric.
+      - name: roi_stddev_pct
+        description: Standard deviation of ROI percentage for the slice.
+      - name: profitable_movies
+        description: Count of profitable movies in the slice.
+      - name: success_rate_pct
+        description: Percentage of profitable movies in the slice.
+      - name: risk_band
+        description: Volatility segment derived from ROI standard deviation for the genre-budget slice.
+      - name: predictability_label
+        description: Plain-language predictability segment combining volatility and success rate for the slice.
+      - name: first_release_year
+        description: Earliest release year in the slice.
+      - name: last_release_year
+        description: Latest release year in the slice.
+      - name: median_roi_rank
+        description: Overall ranking by median ROI percentage.
+      - name: rank_within_genre
+        description: Ranking of budget tiers within a genre by median ROI percentage.
+      - name: rank_within_budget_tier
+        description: Ranking of genres within a budget tier by median ROI percentage.
+
+  - name: fact_genre_budget_roi_recommendable
+    description: Filtered recommendation-grade version of the genre-budget ROI table, keeping only segments with at least 5 films and excluding TV Movie and Foreign so non-comparable classifications do not drive the dashboard recommendation.
+    columns:
+      - name: genre_budget_profile_key
+        description: Deterministic unique key for the genre-budget combination.
+        tests:
+          - not_null
+          - unique
+      - name: genre
+        description: Genre being analyzed.
+        tests:
+          - not_null
+      - name: budget_tier
+        description: Relative budget tier for the analysis slice.
+        tests:
+          - not_null
+      - name: budget_quartile
+        description: Relative budget quartile number.
+      - name: movie_count
+        description: Number of strict-scope films in the segment, constrained to at least 5 in this filtered model.
+      - name: total_revenue
+        description: Total revenue generated by the segment.
+      - name: total_profit
+        description: Total profit generated by the segment.
+      - name: avg_roi_pct
+        description: Average ROI percentage for the segment.
+      - name: median_roi_pct
+        description: Median ROI percentage for the segment.
+      - name: roi_stddev_pct
+        description: ROI volatility for the segment.
+      - name: profitable_movies
+        description: Count of profitable movies in the segment.
+      - name: success_rate_pct
+        description: Percentage of profitable movies in the segment.
+      - name: risk_band
+        description: Volatility segment for the recommendation-grade slice.
+      - name: predictability_label
+        description: Predictability label for the recommendation-grade slice.
+      - name: first_release_year
+        description: Earliest release year in the segment.
+      - name: last_release_year
+        description: Latest release year in the segment.
+      - name: median_roi_rank
+        description: Overall ranking by median ROI percentage.
+      - name: rank_within_genre
+        description: Ranking of budget tiers within a genre by median ROI percentage.
+      - name: rank_within_budget_tier
+        description: Ranking of genres within a budget tier by median ROI percentage.
+
+  - name: fact_genre_market_momentum
+    description: Yearly genre trend table with lag-based revenue and ROI movement for momentum analysis.
+    columns:
+      - name: genre_year_key
+        description: Deterministic unique key for a genre-year row.
+        tests:
+          - not_null
+          - unique
+      - name: genre
+        description: Genre being analyzed.
+        tests:
+          - not_null
+      - name: release_year
+        description: Calendar release year.
+        tests:
+          - not_null
+      - name: movie_count
+        description: Number of ROI-eligible movies in the genre-year slice.
+      - name: total_revenue
+        description: Total revenue for the genre-year slice.
+      - name: avg_roi_pct
+        description: Average ROI percentage for the genre-year slice.
+      - name: median_roi_pct
+        description: Median ROI percentage for the genre-year slice.
+      - name: prev_year_revenue
+        description: Prior year's total revenue for the same genre.
+      - name: yoy_revenue_change
+        description: Absolute year-over-year revenue change.
+      - name: yoy_revenue_change_pct
+        description: Percentage year-over-year revenue change.
+      - name: prev_year_median_roi_pct
+        description: Prior year's median ROI percentage.
+      - name: yoy_median_roi_pct_change
+        description: Change in median ROI percentage versus the prior year.
+      - name: next_year_median_roi_pct
+        description: Following year's median ROI percentage.
+      - name: momentum_label
+        description: Trend label summarizing the direction of the genre's momentum.
+
+  - name: fact_genre_market_coverage_trends
+    description: Yearly genre trend table for the broader market-coverage scope, focused on volume and revenue patterns rather than ROI.
+    columns:
+      - name: genre_market_coverage_year_key
+        description: Deterministic unique key for a genre-year market-coverage row.
+        tests:
+          - not_null
+          - unique
+      - name: genre
+        description: Genre being analyzed.
+        tests:
+          - not_null
+      - name: release_year
+        description: Calendar release year.
+        tests:
+          - not_null
+      - name: movie_count
+        description: Number of benchmark-scope movies in the genre-year slice.
+      - name: total_revenue
+        description: Total reported revenue for the genre-year slice.
+      - name: avg_budget
+        description: Average budget for benchmark-scope movies in the slice.
+      - name: median_revenue
+        description: Median revenue for benchmark-scope movies in the slice.
+      - name: recommendation_eligible_movie_count
+        description: Count of genre-year movies that also fall inside the stricter recommendation scope.
+      - name: prev_year_movie_count
+        description: Prior year's movie count for the same genre.
+      - name: yoy_movie_count_change
+        description: Absolute year-over-year change in movie count.
+      - name: yoy_movie_count_change_pct
+        description: Percentage year-over-year change in movie count.
+      - name: prev_year_revenue
+        description: Prior year's total revenue for the same genre.
+      - name: yoy_revenue_change
+        description: Absolute year-over-year revenue change.
+      - name: yoy_revenue_change_pct
+        description: Percentage year-over-year revenue change.
+      - name: next_year_movie_count
+        description: Following year's movie count for the same genre.
+      - name: market_trend_label
+        description: Trend label summarizing whether genre coverage is expanding, contracting, or mixed.

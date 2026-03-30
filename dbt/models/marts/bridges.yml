@@ -2,6 +2,7 @@ version: 2
 
 models:
   - name: bridge_movie_genre
+    description: Bridge table linking movies to zero-to-many genres through the genre dimension.
     columns:
       - name: movie_id
         tests:
@@ -9,11 +10,18 @@ models:
           - relationships:
               to: ref('stg_movies')
               field: movie_id
+      - name: genre_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_genre')
+              field: genre_key
       - name: genre
         tests:
           - not_null
 
   - name: bridge_movie_company
+    description: Bridge table linking movies to zero-to-many production companies through the company dimension.
     columns:
       - name: movie_id
         tests:
@@ -21,11 +29,18 @@ models:
           - relationships:
               to: ref('stg_movies')
               field: movie_id
+      - name: company_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_company')
+              field: company_key
       - name: company
         tests:
           - not_null
 
   - name: bridge_movie_country
+    description: Bridge table linking movies to zero-to-many production countries through the country dimension.
     columns:
       - name: movie_id
         tests:
@@ -33,6 +48,12 @@ models:
           - relationships:
               to: ref('stg_movies')
               field: movie_id
+      - name: country_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_country')
+              field: country_key
       - name: country
         tests:
           - not_null
