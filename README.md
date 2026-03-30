@@ -243,24 +243,29 @@ Built in the `gold` schema. This layer uses a core star schema for movie perform
 | `dim_budget_tier`        | Lightweight budget-tier lookup dimension retained for Power BI slicing |
 | `fact_movie_performance` | Core movie-grain fact table for recommendation-scope analysis          |
 
-The core star schema is centered on `fact_movie_performance`.
+The reporting core star schema is centered on `fact_movie_performance`.
 
 - **Grain:** one row per ROI-eligible movie
 - **Dimension keys:** `movie_id` and `date_key`
 - **Measures:** `budget`, `revenue`, `profit`, `roi`, `roi_pct`, and rating metrics
 
-Conceptually, the design is:
+Conceptually, the reporting core is:
 
 ```text
-dim_date      dim_movie
-    \           /
-     \         /
-   fact_movie_performance
+dim_movie      dim_date      dim_budget_tier
+    \             |              /
+     \            |             /
+      \           |            /
+        fact_movie_performance
 ```
 
-This is the main dimensional model used for downstream reporting. `dim_budget_tier` is also kept as a small helper dimension for reporting convenience, since it is already used in Power BI.
+This is the main dimensional model used for downstream reporting. `dim_budget_tier` is kept in the reporting core because it is already used in Power BI for budget-tier slicing.
 
-Full star schema diagram:
+Main reporting core star schema diagram:
+
+- [Open the live diagram](https://mermaid.live/edit#pako:eNrlVduO2jAQ_ZXIz4AwLATyRrlUqKK7QrQPFZJlyBCsTezUmdBS4N_XuYASkr2ofayfYp859syc4_hEtsoF4hDQE8E9zYO1tMyYjcYrtnj8Pp-yp-ly9rhcjL6Op9YpQ5MhJFqBOghgwrWevpQBlyOwZzhaswIQoRbSszax6wEyFKBLsIwD0GKb4-X9cs7PmGsUPlRJGg4gY6gcthOSy63gPjMpcRYhxziq0kOtdgJrtlWidpGF20L0RikfuLRExPJENYRKI7i1MXmu7wSZQ8AXntjUlcsPHtMcTYXlPqFCU2qG1JQZoctcOGTAZS2zj8l8kUn9IXnzxqLAYmKJ4EYEk30ESauhvNMVOQLX9UigJO7fN0PVQ_9qlP_ZAslAEYC5FkFo-TzChHhNp2SQyWhV8cftlhf9kTohRVx-LMdX1U91utfwzgq55OkqkzyA-ySOlQWmduwXwHNtWxMAZF2Nn75NPk9XbDWfLu9LLRiuUvFfe7JKNNKYP5ZAoeRdfq_8kM_nZvN8Llxh53Zr3-Rd1I2XKuvcxPwordgsp1w8aRBPC5c4qGNoEGO8gCdTkjZ1TXAPRkXimE9TL499XJO1vBhayOUPpYIrU6vY2xNnx_3IzOIwyTF_pm4hRkrQYxVLJA5t2-kexDmR32bapy2736a94YB2BzbtNMiROE1q261euzOkvYc-HVC7a18a5E96LG11--1hu0sfuoNBx-7RXoOAK1DpRfZMpq_l5QXezj3w)
+
+Full warehouse star schema diagram:
 
 - [Open the live diagram](https://mermaid.live/edit#pako:eNrlVl1v2jAU_SuRn2m1pJQmeaN8VGiCVohO2oRkueSSWiU2cxw2Bvz3OR8whzjA2r0tT0mOz73n-h7fZINmPADkIxBdSkJBoimz1NVvdyZ4-Phl0MNPvXH_cTxsjzo9a5Oj6UWZtCK-ooBpYD19LgMBkYDfYG31NSCWgrLQekmCECSWFEQJZkkEgs4KvByv4HxPiJB0AVWSgBWwBCrJ5pQRNqNkgZUkgmNJZBJX6UvB51QawnJqfImXM231C-cLIMyiMS6EClhyISEwrim0nlmkksCChvTFVC5ZhVgQqSos75PkUpWaI4YyYxngAFY5sJuy_KY7GOatvqi9xcZKKnVhacNVE5T6GNKthnKkPbIGIsxIxJl8PW-Gqoc-apT_2QLpJWkE6lhES2tBYpkS93JKBum2JxV_HE657o_MCRkSkHV5fbX7WZ-Oe3hkhaLl2VvMSATHItaVF5jP8Q-AN-O2pgAwU433z92H3gRPBr3xcama4SoVv9uTVaJqjZpYVFLODPoeeqNxpQkhMAF1mjLwKNL9eKDKLIa7MWTtWP_rXKnqzuPwqT36qicpGDMeLQlb1wUs4Foa4yI6VZsh8bmp9u8V5TvwPJqMK0JmPGFSnEiWwacrNAau7d-7Mtb8Cmy3V1fbrfbx8A95T_J2_MDLZop_GCOX0vRj6peP3VnFfGPy_4XSTQH2JvtQiLyLeojao6rtw1774VSeOAMa7Y9ize0nzFWi7pVqTpoy1EChoAHypUiggdSHJiLpI8p8OUXyFdTURr66DYh4m6Ip2ymOyv2N82hPEzwJX5E_J4tYPSXL1BbFP-lhiZrbIDppbuQ7XsvJgiB_g34i33WvbffWdT95tue4dstroDXyr2yneX3jOXdNz76zb5qe4-wa6FeW1762W3e3nt20b51Ws-l6u99ORWaL)
 
@@ -275,7 +280,22 @@ Full star schema diagram:
 | `bridge_movie_company` | Many-to-many bridge from movies to production companies       |
 | `bridge_movie_country` | Many-to-many bridge from movies to production countries       |
 
-These models make the warehouse more reusable if the analytical focus shifts beyond the current dashboard, while keeping the main Power BI reporting flow centered on `fact_movie_performance` and the analytical marts.
+Conceptually, the full warehouse schema is:
+
+```text
+                     dim_movie        dim_date        dim_budget_tier
+                         \               |               /
+                          \              |              /
+                           \             |             /
+                           fact_movie_performance
+                             /        |         \
+                            /         |          \
+               bridge_movie_genre  bridge_movie_company  bridge_movie_country
+                        |                  |                    |
+                    dim_genre         dim_company          dim_country
+```
+
+These models make the warehouse more reusable if the analytical focus shifts beyond the current dashboard, while keeping the main Power BI reporting flow centered on the smaller reporting core around `fact_movie_performance`.
 
 #### Analytical marts
 
