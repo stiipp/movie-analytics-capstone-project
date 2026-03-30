@@ -1,0 +1,38 @@
+version: 2
+
+models:
+  - name: bridge_movie_genre
+    columns:
+      - name: movie_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_movies')
+              field: movie_id
+      - name: genre
+        tests:
+          - not_null
+
+  - name: bridge_movie_company
+    columns:
+      - name: movie_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_movies')
+              field: movie_id
+      - name: company
+        tests:
+          - not_null
+
+  - name: bridge_movie_country
+    columns:
+      - name: movie_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_movies')
+              field: movie_id
+      - name: country
+        tests:
+          - not_null

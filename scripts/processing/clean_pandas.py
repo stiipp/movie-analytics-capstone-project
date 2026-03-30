@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Callable
 
 import pandas as pd
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -56,6 +56,27 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger("clean_pandas")
+
+
+def log_count_check(dataset: str, metric: str, observed: int, expected: int = 0) -> None:
+    """Log a small PASS/WARN quality check for easy console scanning."""
+    status = "PASS" if observed == expected else "WARN"
+    logger.info(
+        "[CHECK][%s] %s.%s -> observed=%d expected=%d",
+        status,
+        dataset,
+        metric,
+        observed,
+        expected,
+    )
+
+
+def update_check_totals(observed: int, expected: int, totals: dict[str, int]) -> None:
+    """Track simple pass/warn counts for end-of-step summary logging."""
+    if observed == expected:
+        totals["pass"] += 1
+    else:
+        totals["warn"] += 1
 
 # ---------------------------------------------------------------------------
 # Date formats detected in the dataset (3 mixed formats)
@@ -97,6 +118,11 @@ def parse_mixed_date_series(series: pd.Series) -> pd.Series:
         if mask.any():
             parsed.loc[mask] = pd.to_datetime(raw.loc[mask], format=fmt, errors="coerce")
 
+    # Final fallback keeps parser resilient if rare date patterns appear later.
+    fallback_mask = parsed.isna() & raw.notna()
+    if fallback_mask.any():
+        parsed.loc[fallback_mask] = pd.to_datetime(raw.loc[fallback_mask], errors="coerce")
+
     return parsed
 
 
@@ -133,6 +159,7 @@ class MovieProcessor:
         self._standardize_release_date()
         self._cast_financials()
         self._add_flags()
+        self._log_quality_checks()
         logger.info(
             "MovieProcessor finished: %d → %d rows.",
             self._initial_rows,
@@ -181,6 +208,32 @@ class MovieProcessor:
             self.df["is_budget_reported"] & self.df["is_revenue_reported"]
         )
 
+    def _log_quality_checks(self) -> None:
+        """Console-friendly quality checks for quick run validation."""
+        totals = {"pass": 0, "warn": 0}
+
+        id_nulls = int(self.df["id"].isna().sum())
+        log_count_check("movies", "id_nulls", id_nulls, 0)
+        update_check_totals(id_nulls, 0, totals)
+
+        duplicate_ids = int(self.df.duplicated(subset=["id"]).sum())
+        log_count_check("movies", "duplicate_ids", duplicate_ids, 0)
+        update_check_totals(duplicate_ids, 0, totals)
+
+        release_date_nulls = int(self.df["release_date"].isna().sum())
+        log_count_check("movies", "release_date_nulls", release_date_nulls, 0)
+        update_check_totals(release_date_nulls, 0, totals)
+
+        logger.info(
+            "[CHECK][INFO] movies.roi_eligible_rows=%d",
+            int(self.df["is_roi_eligible"].sum()),
+        )
+        logger.info(
+            "[CHECK][SUMMARY] movies -> pass=%d warn=%d",
+            totals["pass"],
+            totals["warn"],
+        )
+
 
 # ===================================================================
 # RatingProcessor
@@ -222,8 +275,39 @@ class RatingProcessor:
 
         df = pd.DataFrame(rows)
         df["movie_id"] = pd.to_numeric(df["movie_id"], errors="coerce").astype("Int64")
+        self._log_quality_checks(df)
         logger.info("RatingProcessor produced %d rows.", len(df))
         return df
+
+    def _log_quality_checks(self, df: pd.DataFrame) -> None:
+        """Console-friendly quality checks for ratings output."""
+        totals = {"pass": 0, "warn": 0}
+
+        movie_id_nulls = int(df["movie_id"].isna().sum())
+        log_count_check("ratings", "movie_id_nulls", movie_id_nulls, 0)
+        update_check_totals(movie_id_nulls, 0, totals)
+
+        duplicate_movie_ids = int(df.duplicated(subset=["movie_id"]).sum())
+        log_count_check("ratings", "duplicate_movie_ids", duplicate_movie_ids, 0)
+        update_check_totals(duplicate_movie_ids, 0, totals)
+
+        avg_rating_nulls = int(df["avg_rating"].isna().sum())
+        log_count_check("ratings", "avg_rating_nulls", avg_rating_nulls, 0)
+        update_check_totals(avg_rating_nulls, 0, totals)
+
+        total_ratings_nulls = int(df["total_ratings"].isna().sum())
+        log_count_check("ratings", "total_ratings_nulls", total_ratings_nulls, 0)
+        update_check_totals(total_ratings_nulls, 0, totals)
+
+        last_rated_nulls = int(df["last_rated"].isna().sum())
+        log_count_check("ratings", "last_rated_nulls", last_rated_nulls, 0)
+        update_check_totals(last_rated_nulls, 0, totals)
+
+        logger.info(
+            "[CHECK][SUMMARY] ratings -> pass=%d warn=%d",
+            totals["pass"],
+            totals["warn"],
+        )
 
 
 # ===================================================================
@@ -243,6 +327,7 @@ class ExtendedMovieProcessor:
         self._cast_id()
         self._clean_production_countries()
         self._clean_spoken_languages()
+        self._log_quality_checks()
         logger.info("ExtendedMovieProcessor finished: %d rows.", len(self.df))
         return self.df
 
@@ -266,6 +351,24 @@ class ExtendedMovieProcessor:
             lambda x: parse_stringified_dict_list(x, "name")
         )
 
+    def _log_quality_checks(self) -> None:
+        """Console-friendly quality checks for extended movie output."""
+        totals = {"pass": 0, "warn": 0}
+
+        id_nulls = int(self.df["id"].isna().sum())
+        log_count_check("movie_extended", "id_nulls", id_nulls, 0)
+        update_check_totals(id_nulls, 0, totals)
+
+        duplicate_ids = int(self.df.duplicated(subset=["id"]).sum())
+        log_count_check("movie_extended", "duplicate_ids", duplicate_ids, 0)
+        update_check_totals(duplicate_ids, 0, totals)
+
+        logger.info(
+            "[CHECK][SUMMARY] movie_extended -> pass=%d warn=%d",
+            totals["pass"],
+            totals["warn"],
+        )
+
 
 # ===================================================================
 # DB helpers
@@ -282,7 +385,25 @@ def ensure_schema(engine, schema_name: str) -> None:
 
 
 def write_table(engine, df: pd.DataFrame, table_name: str) -> None:
-    df.to_sql(table_name, con=engine, schema=SCHEMA, if_exists="replace", index=False)
+    """
+    Write DataFrame to target table without dropping the table object.
+
+    Why this matters:
+    - `if_exists="replace"` issues DROP TABLE, which breaks when downstream views
+      depend on the table (for example dbt staging views).
+    - Truncating + appending keeps dependencies valid across reruns.
+    """
+    table_exists = inspect(engine).has_table(table_name, schema=SCHEMA)
+
+    if table_exists:
+        with engine.begin() as conn:
+            conn.execute(text(f'TRUNCATE TABLE "{SCHEMA}"."{table_name}"'))
+        write_mode = "append"
+        logger.info("Truncated existing table %s.%s before load.", SCHEMA, table_name)
+    else:
+        write_mode = "fail"
+
+    df.to_sql(table_name, con=engine, schema=SCHEMA, if_exists=write_mode, index=False)
     logger.info("Wrote %d rows → %s.%s", len(df), SCHEMA, table_name)
 
 
