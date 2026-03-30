@@ -22,6 +22,7 @@ from sqlalchemy import create_engine, inspect, text
 
 
 def _running_in_docker() -> bool:
+    # Detect container execution so local and Docker defaults can differ safely.
     return Path("/.dockerenv").exists()
 
 
@@ -44,14 +45,17 @@ logger = logging.getLogger("transform_spark")
 
 
 def jdbc_url() -> str:
+    # JDBC connection string used by Spark for Postgres reads and writes.
     return f"jdbc:postgresql://{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 
 def db_url_sqlalchemy() -> str:
+    # SQLAlchemy connection string used for schema checks and safe table writes.
     return f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 
 def create_spark() -> SparkSession:
+    # Create the Spark session used for the mapping transformations.
     return (
         SparkSession.builder.appName("movie-analytics-transform-spark")
         .config("spark.jars.packages", "org.postgresql:postgresql:42.7.3")
@@ -61,16 +65,19 @@ def create_spark() -> SparkSession:
 
 
 def ensure_target_schema() -> None:
+    # Make sure the gold_prep schema exists before Spark starts writing tables.
     engine = create_engine(db_url_sqlalchemy())
     with engine.begin() as conn:
         conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {TARGET_SCHEMA}"))
 
 
 def _quote_ident(identifier: str) -> str:
+    # Quote identifiers defensively for DDL statements built in Python.
     return f'"{identifier.replace(chr(34), chr(34) * 2)}"'
 
 
 def _spark_type_to_postgres(dtype: T.DataType) -> str:
+    # Map Spark column types to Postgres types when syncing table schemas.
     if isinstance(dtype, T.StringType):
         return "text"
     if isinstance(dtype, T.BooleanType):
@@ -97,6 +104,7 @@ def _spark_type_to_postgres(dtype: T.DataType) -> str:
 
 
 def _ensure_table_has_df_columns(engine, schema_name: str, table_name: str, df) -> None:
+    # Add any newly introduced columns before writing so reruns do not fail on schema drift.
     inspector = inspect(engine)
     existing_cols = {
         col_info["name"].lower()
@@ -136,6 +144,7 @@ def _ensure_table_has_df_columns(engine, schema_name: str, table_name: str, df) 
 
 
 def read_table(spark: SparkSession, table_name: str):
+    # Read a cleaned silver_base table through JDBC so Spark can explode the multivalue fields.
     return (
         spark.read.format("jdbc")
         .option("url", jdbc_url())
@@ -148,12 +157,14 @@ def read_table(spark: SparkSession, table_name: str):
 
 
 def write_table(df, table_name: str) -> None:
+    # Snapshot existing data before reload so a failed write can be restored safely.
     engine = create_engine(db_url_sqlalchemy())
     table_exists = inspect(engine).has_table(table_name, schema=TARGET_SCHEMA)
     qualified = f'{_quote_ident(TARGET_SCHEMA)}.{_quote_ident(table_name)}'
     backup = f'{_quote_ident(TARGET_SCHEMA)}.{_quote_ident(f"_{table_name}_backup")}'
 
     if table_exists:
+        # Keep the target table object intact so downstream references do not break on reruns.
         _ensure_table_has_df_columns(engine, TARGET_SCHEMA, table_name, df)
         with engine.begin() as conn:
             conn.execute(text(f"DROP TABLE IF EXISTS {backup}"))
@@ -200,6 +211,7 @@ def write_table(df, table_name: str) -> None:
 
 
 def build_mapping(extended, source_column: str, value_name: str):
+    # Turn comma-delimited extended attributes into one row per movie/value pair.
     return (
         extended.select(
             F.col("id").alias("movie_id"),
@@ -215,6 +227,7 @@ def build_mapping(extended, source_column: str, value_name: str):
 
 
 def main() -> None:
+    # Build and write all bridge-ready mapping tables for downstream dbt models.
     logger.info(
         "Starting PySpark transformation pipeline (%s -> %s)",
         SOURCE_SCHEMA,
@@ -225,11 +238,13 @@ def main() -> None:
     spark = create_spark()
     spark.sparkContext.setLogLevel("WARN")
 
+    # All mapping outputs are derived from the cleaned extended-attribute table.
     extended = read_table(spark, "movie_extended")
     movie_genres = build_mapping(extended, "genres", "genre")
     movie_companies = build_mapping(extended, "production_companies", "company")
     movie_countries = build_mapping(extended, "production_countries", "country")
 
+    # Write the bridge-ready mapping tables consumed by dbt staging models.
     write_table(movie_genres, "movie_genres")
     write_table(movie_companies, "movie_companies")
     write_table(movie_countries, "movie_countries")
