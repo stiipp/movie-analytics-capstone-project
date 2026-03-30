@@ -1,4 +1,5 @@
 # Movie Analytics Capstone Project
+
 An end-to-end data pipeline that ingests raw movie data into PostgreSQL, enriches and cleans it with Spark and pandas, transforms it through dbt into analytical models, and orchestrates the workflow with Apache Airflow. The final `gold` layer is designed for Power BI reporting.
 
 ## Table of Contents
@@ -82,16 +83,16 @@ Schema layout:
 
 ## Tech Stack
 
-| Tool | Purpose |
-| --- | --- |
-| Python 3.10 | Ingestion, extraction, cleaning, and transform scripts |
-| pandas | CSV/JSON cleaning and standardization |
-| PySpark 3.5.1 | Enrichment and transform jobs |
-| PostgreSQL | Warehouse for bronze, silver, and gold schemas |
-| dbt | Transformation, modeling, testing, and documentation |
-| Apache Airflow 2.8.1 | Workflow orchestration |
-| Docker & Docker Compose | Containerized infrastructure |
-| Power BI | Final dashboard and reporting layer |
+| Tool                    | Purpose                                                |
+| ----------------------- | ------------------------------------------------------ |
+| Python 3.10             | Ingestion, extraction, cleaning, and transform scripts |
+| pandas                  | CSV/JSON cleaning and standardization                  |
+| PySpark 3.5.1           | Enrichment and transform jobs                          |
+| PostgreSQL              | Warehouse for bronze, silver, and gold schemas         |
+| dbt                     | Transformation, modeling, testing, and documentation   |
+| Apache Airflow 2.8.1    | Workflow orchestration                                 |
+| Docker & Docker Compose | Containerized infrastructure                           |
+| Power BI                | Final dashboard and reporting layer                    |
 
 ## Project Structure
 
@@ -200,15 +201,16 @@ Step 7 - Validate: dbt tests verify that the outputs are logically consistent.
 The pipeline processes internal project data plus a local TMDB bulk enrichment file.
 
 TMDB bulk enrichment source:
+
 - Kaggle: [TMDB Movies Dataset 2023 (930K Movies)](https://www.kaggle.com/datasets/asaniczka/tmdb-movies-dataset-2023-930k-movies)
 
-| Source | Landing Table / Output | Description |
-| --- | --- | --- |
-| `data/raw/project_data.zip` | Extracted into `data/processed` | Main project source package |
-| `movies_main.csv` | `bronze.movies_main` | Core movie-level financial and release data |
-| `movie_extended.csv` | `bronze.movie_extended` | Extended movie attributes such as genres, companies, countries, languages |
-| `ratings.json` | `bronze.ratings` | Nested movie ratings summary payload |
-| `data/raw/TMDB_movie_dataset_v11.csv` | `bronze.ext_tmdb_raw` | Local bulk TMDB enrichment source |
+| Source                                | Landing Table / Output          | Description                                                               |
+| ------------------------------------- | ------------------------------- | ------------------------------------------------------------------------- |
+| `data/raw/project_data.zip`           | Extracted into `data/processed` | Main project source package                                               |
+| `movies_main.csv`                     | `bronze.movies_main`            | Core movie-level financial and release data                               |
+| `movie_extended.csv`                  | `bronze.movie_extended`         | Extended movie attributes such as genres, companies, countries, languages |
+| `ratings.json`                        | `bronze.ratings`                | Nested movie ratings summary payload                                      |
+| `data/raw/TMDB_movie_dataset_v11.csv` | `bronze.ext_tmdb_raw`           | Local bulk TMDB enrichment source                                         |
 
 ## dbt Models
 
@@ -218,15 +220,15 @@ All source tables, models, and major columns are documented in YAML under `dbt/m
 
 Materialized as views in the `silver` schema.
 
-| Model | Source | Purpose |
-| --- | --- | --- |
-| `stg_movies` | `silver_base.movies` | Standardizes movie-level financial and eligibility fields |
-| `stg_ratings` | `silver_base.ratings` | Standardizes flattened movie ratings |
-| `stg_movie_extended` | `silver_base.movie_extended` | Exposes extended movie attributes |
-| `stg_movie_genres` | `gold_prep.movie_genres` | Cleans exploded movie-to-genre mappings |
-| `stg_movie_companies` | `gold_prep.movie_companies` | Cleans exploded movie-to-company mappings |
-| `stg_movie_countries` | `gold_prep.movie_countries` | Cleans exploded movie-to-country mappings |
-| `stg_movies_roi_eligible` | `stg_movies` | Filters to recommendation-grade investment-analysis rows |
+| Model                     | Source                       | Purpose                                                   |
+| ------------------------- | ---------------------------- | --------------------------------------------------------- |
+| `stg_movies`              | `silver_base.movies`         | Standardizes movie-level financial and eligibility fields |
+| `stg_ratings`             | `silver_base.ratings`        | Standardizes flattened movie ratings                      |
+| `stg_movie_extended`      | `silver_base.movie_extended` | Exposes extended movie attributes                         |
+| `stg_movie_genres`        | `gold_prep.movie_genres`     | Cleans exploded movie-to-genre mappings                   |
+| `stg_movie_companies`     | `gold_prep.movie_companies`  | Cleans exploded movie-to-company mappings                 |
+| `stg_movie_countries`     | `gold_prep.movie_countries`  | Cleans exploded movie-to-country mappings                 |
+| `stg_movies_roi_eligible` | `stg_movies`                 | Filters to recommendation-grade investment-analysis rows  |
 
 ### Marts Layer
 
@@ -234,12 +236,12 @@ Built in the `gold` schema. This layer uses a core star schema for movie perform
 
 #### Core Star Schema
 
-| Model | Description |
-| --- | --- |
-| `dim_date` | Date dimension derived from ROI-eligible movie release dates |
-| `dim_movie` | Movie dimension with release, financial, and rating attributes |
-| `dim_budget_tier` | Lightweight budget-tier lookup dimension retained for Power BI slicing |
-| `fact_movie_performance` | Core movie-grain fact table for recommendation-scope analysis |
+| Model                    | Description                                                            |
+| ------------------------ | ---------------------------------------------------------------------- |
+| `dim_date`               | Date dimension derived from ROI-eligible movie release dates           |
+| `dim_movie`              | Movie dimension with release, financial, and rating attributes         |
+| `dim_budget_tier`        | Lightweight budget-tier lookup dimension retained for Power BI slicing |
+| `fact_movie_performance` | Core movie-grain fact table for recommendation-scope analysis          |
 
 The core star schema is centered on `fact_movie_performance`.
 
@@ -258,29 +260,33 @@ dim_date      dim_movie
 
 This is the main dimensional model used for downstream reporting. `dim_budget_tier` is also kept as a small helper dimension for reporting convenience, since it is already used in Power BI.
 
+Full star schema diagram:
+
+- [Open the live diagram](https://mermaid.live/edit#pako:eNrlVl1v2jAU_SuRn2m1pJQmeaN8VGiCVohO2oRkueSSWiU2cxw2Bvz3OR8whzjA2r0tT0mOz73n-h7fZINmPADkIxBdSkJBoimz1NVvdyZ4-Phl0MNPvXH_cTxsjzo9a5Oj6UWZtCK-ooBpYD19LgMBkYDfYG31NSCWgrLQekmCECSWFEQJZkkEgs4KvByv4HxPiJB0AVWSgBWwBCrJ5pQRNqNkgZUkgmNJZBJX6UvB51QawnJqfImXM231C-cLIMyiMS6EClhyISEwrim0nlmkksCChvTFVC5ZhVgQqSos75PkUpWaI4YyYxngAFY5sJuy_KY7GOatvqi9xcZKKnVhacNVE5T6GNKthnKkPbIGIsxIxJl8PW-Gqoc-apT_2QLpJWkE6lhES2tBYpkS93JKBum2JxV_HE657o_MCRkSkHV5fbX7WZ-Oe3hkhaLl2VvMSATHItaVF5jP8Q-AN-O2pgAwU433z92H3gRPBr3xcama4SoVv9uTVaJqjZpYVFLODPoeeqNxpQkhMAF1mjLwKNL9eKDKLIa7MWTtWP_rXKnqzuPwqT36qicpGDMeLQlb1wUs4Foa4yI6VZsh8bmp9u8V5TvwPJqMK0JmPGFSnEiWwacrNAau7d-7Mtb8Cmy3V1fbrfbx8A95T_J2_MDLZop_GCOX0vRj6peP3VnFfGPy_4XSTQH2JvtQiLyLeojao6rtw1774VSeOAMa7Y9ize0nzFWi7pVqTpoy1EChoAHypUiggdSHJiLpI8p8OUXyFdTURr66DYh4m6Ip2ymOyv2N82hPEzwJX5E_J4tYPSXL1BbFP-lhiZrbIDppbuQ7XsvJgiB_g34i33WvbffWdT95tue4dstroDXyr2yneX3jOXdNz76zb5qe4-wa6FeW1762W3e3nt20b51Ws-l6u99ORWaL)
+
 #### Extended dimensional support
 
-| Model | Description |
-| --- | --- |
-| `dim_genre` | Genre dimension used with `bridge_movie_genre` |
-| `dim_company` | Production company dimension used with `bridge_movie_company` |
-| `dim_country` | Production country dimension used with `bridge_movie_country` |
-| `bridge_movie_genre` | Many-to-many bridge from movies to genres |
-| `bridge_movie_company` | Many-to-many bridge from movies to production companies |
-| `bridge_movie_country` | Many-to-many bridge from movies to production countries |
+| Model                  | Description                                                   |
+| ---------------------- | ------------------------------------------------------------- |
+| `dim_genre`            | Genre dimension used with `bridge_movie_genre`                |
+| `dim_company`          | Production company dimension used with `bridge_movie_company` |
+| `dim_country`          | Production country dimension used with `bridge_movie_country` |
+| `bridge_movie_genre`   | Many-to-many bridge from movies to genres                     |
+| `bridge_movie_company` | Many-to-many bridge from movies to production companies       |
+| `bridge_movie_country` | Many-to-many bridge from movies to production countries       |
 
 These models make the warehouse more reusable if the analytical focus shifts beyond the current dashboard, while keeping the main Power BI reporting flow centered on `fact_movie_performance` and the analytical marts.
 
 #### Analytical marts
 
-| Model | Description |
-| --- | --- |
-| `fact_movie_roi_analysis` | ROI-focused reporting view for financially eligible movies |
-| `fact_movie_market_coverage` | Broader benchmark-scope reporting view for market-coverage analysis |
-| `fact_genre_budget_roi` | Power BI-ready genre-budget ROI aggregate view |
-| `fact_genre_budget_roi_recommendable` | Recommendation-grade subset of genre-budget ROI segments |
-| `fact_genre_market_momentum` | Genre-year revenue and ROI trend view |
-| `fact_genre_market_coverage_trends` | Genre-year market expansion and contraction trend view |
+| Model                                 | Description                                                         |
+| ------------------------------------- | ------------------------------------------------------------------- |
+| `fact_movie_roi_analysis`             | ROI-focused reporting view for financially eligible movies          |
+| `fact_movie_market_coverage`          | Broader benchmark-scope reporting view for market-coverage analysis |
+| `fact_genre_budget_roi`               | Power BI-ready genre-budget ROI aggregate view                      |
+| `fact_genre_budget_roi_recommendable` | Recommendation-grade subset of genre-budget ROI segments            |
+| `fact_genre_market_momentum`          | Genre-year revenue and ROI trend view                               |
+| `fact_genre_market_coverage_trends`   | Genre-year market expansion and contraction trend view              |
 
 These marts are built from the core star schema plus the genre mapping layer, while the company and country dimensions remain available for future downstream analysis.
 
@@ -297,13 +303,13 @@ Schema tests used across models:
 
 Business rules covered by singular tests:
 
-| Test | Purpose |
-| --- | --- |
-| `test_stg_movies_roi_eligible_flag_consistency` | Ensures ROI-eligible staging rows satisfy expected financial thresholds |
-| `test_fact_movie_performance_budget_quartile_consistency` | Validates budget quartile assignment logic |
-| `test_fact_movie_roi_analysis_profit_consistency` | Ensures `profit = revenue - budget` |
-| `test_fact_movie_roi_analysis_roi_pct_consistency` | Ensures ROI percentage is calculated correctly |
-| `test_fact_genre_budget_roi_recommendable_min_sample` | Ensures recommendation-grade genre-budget slices have at least 5 movies |
+| Test                                                      | Purpose                                                                 |
+| --------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `test_stg_movies_roi_eligible_flag_consistency`           | Ensures ROI-eligible staging rows satisfy expected financial thresholds |
+| `test_fact_movie_performance_budget_quartile_consistency` | Validates budget quartile assignment logic                              |
+| `test_fact_movie_roi_analysis_profit_consistency`         | Ensures `profit = revenue - budget`                                     |
+| `test_fact_movie_roi_analysis_roi_pct_consistency`        | Ensures ROI percentage is calculated correctly                          |
+| `test_fact_genre_budget_roi_recommendable_min_sample`     | Ensures recommendation-grade genre-budget slices have at least 5 movies |
 
 ## Airflow DAG
 
@@ -311,13 +317,13 @@ A single DAG, `movie_analytics_pipeline`, orchestrates the workflow using `BashO
 
 This DAG currently runs on a manual trigger (`schedule_interval=None`), which fits the capstone/demo workflow and avoids unnecessary automatic reruns while the project is still evolving.
 
-| Setting | Value | Reason |
-| --- | --- | --- |
-| `schedule_interval` | `None` | Manual execution for controlled runs |
-| `catchup` | `False` | Prevents backfill on first enable |
-| `retries` | `1` | Retries each failed task once |
-| `retry_delay` | `5 min` | Small retry buffer for transient failures |
-| `max_active_runs` | `1` | Prevents overlapping full-pipeline runs |
+| Setting             | Value   | Reason                                    |
+| ------------------- | ------- | ----------------------------------------- |
+| `schedule_interval` | `None`  | Manual execution for controlled runs      |
+| `catchup`           | `False` | Prevents backfill on first enable         |
+| `retries`           | `1`     | Retries each failed task once             |
+| `retry_delay`       | `5 min` | Small retry buffer for transient failures |
+| `max_active_runs`   | `1`     | Prevents overlapping full-pipeline runs   |
 
 Task sequence:
 
@@ -339,6 +345,7 @@ dbt in Airflow writes logs and target artifacts to `/tmp` to avoid permission is
 - Docker and Docker Compose
 - Git
 - Python 3.10+ if running scripts locally
+
 ### Setup
 
 1. Clone the repository:
