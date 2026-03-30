@@ -199,6 +199,9 @@ Step 7 - Validate: dbt tests verify that the outputs are logically consistent.
 
 The pipeline processes internal project data plus a local TMDB bulk enrichment file.
 
+TMDB bulk enrichment source:
+- Kaggle: [TMDB Movies Dataset 2023 (930K Movies)](https://www.kaggle.com/datasets/asaniczka/tmdb-movies-dataset-2023-930k-movies)
+
 | Source | Landing Table / Output | Description |
 | --- | --- | --- |
 | `data/raw/project_data.zip` | Extracted into `data/processed` | Main project source package |
