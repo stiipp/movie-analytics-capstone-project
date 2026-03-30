@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-# movie-analytics-capstone-project
-=======
 # Movie Analytics Capstone Project
 An end-to-end data pipeline that ingests raw movie data into PostgreSQL, enriches and cleans it with Spark and pandas, transforms it through dbt into analytical models, and orchestrates the workflow with Apache Airflow. The final `gold` layer is designed for Power BI reporting.
 
