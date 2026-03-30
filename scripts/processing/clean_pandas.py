@@ -13,6 +13,8 @@ Usage:
     python scripts/processing/clean_pandas.py
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import os
@@ -158,6 +160,7 @@ class MovieProcessor:
         self._cast_id()
         self._standardize_release_date()
         self._cast_financials()
+        self._ensure_optional_financial_columns()
         self._add_flags()
         self._log_quality_checks()
         logger.info(
@@ -201,12 +204,63 @@ class MovieProcessor:
                 nulls,
             )
 
+    def _ensure_optional_financial_columns(self) -> None:
+        """Backfill optional enrichment columns so downstream models can rely on stable schema."""
+        if "budget_reported" not in self.df.columns:
+            self.df["budget_reported"] = self.df["budget"]
+        else:
+            self.df["budget_reported"] = pd.to_numeric(self.df["budget_reported"], errors="coerce")
+            self.df["budget_reported"] = self.df["budget_reported"].where(
+                self.df["budget_reported"] > 0,
+                other=None,
+            )
+
+        if "is_budget_imputed" not in self.df.columns:
+            self.df["is_budget_imputed"] = False
+        else:
+            self.df["is_budget_imputed"] = self.df["is_budget_imputed"].fillna(False).astype(bool)
+
+        if "budget_imputation_method" not in self.df.columns:
+            self.df["budget_imputation_method"] = None
+
     def _add_flags(self) -> None:
-        self.df["is_budget_reported"] = self.df["budget"].notna()
-        self.df["is_revenue_reported"] = self.df["revenue"].notna()
-        self.df["is_roi_eligible"] = (
-            self.df["is_budget_reported"] & self.df["is_revenue_reported"]
+        # Derive reported-budget provenance from the pre-imputation column when present.
+        # Using final budget would incorrectly mark imputed budgets as "reported".
+        if "budget_reported" in self.df.columns:
+            derived_budget_reported = self.df["budget_reported"].notna()
+        else:
+            derived_budget_reported = self.df["budget"].notna()
+        derived_revenue_reported = self.df["revenue"].notna()
+
+        if "is_budget_reported" in self.df.columns:
+            self.df["is_budget_reported"] = self.df["is_budget_reported"].fillna(False).astype(bool)
+        else:
+            self.df["is_budget_reported"] = derived_budget_reported
+
+        if "is_revenue_reported" in self.df.columns:
+            self.df["is_revenue_reported"] = self.df["is_revenue_reported"].fillna(False).astype(bool)
+        else:
+            self.df["is_revenue_reported"] = derived_revenue_reported
+
+        market_coverage_eligible = (
+            self.df["is_revenue_reported"]
+            & (self.df["budget"] >= 10000)
+            & (self.df["revenue"] > 0)
         )
+        recommendation_eligible = (
+            self.df["is_budget_reported"]
+            & self.df["is_revenue_reported"]
+            & (self.df["budget"] >= 10000)
+            & (self.df["revenue"] >= 1000000)
+        )
+
+        self.df["is_market_coverage_eligible"] = market_coverage_eligible
+        self.df["is_recommendation_eligible"] = recommendation_eligible
+
+        # Backward-compatibility aliases for legacy downstream references.
+        self.df["roi_eligible_imputed"] = self.df["is_market_coverage_eligible"]
+        self.df["roi_eligible_strict"] = self.df["is_recommendation_eligible"]
+        self.df["is_roi_eligible"] = self.df["is_recommendation_eligible"]
 
     def _log_quality_checks(self) -> None:
         """Console-friendly quality checks for quick run validation."""
@@ -225,8 +279,16 @@ class MovieProcessor:
         update_check_totals(release_date_nulls, 0, totals)
 
         logger.info(
-            "[CHECK][INFO] movies.roi_eligible_rows=%d",
+            "[CHECK][INFO] movies.recommendation_eligible_rows=%d",
             int(self.df["is_roi_eligible"].sum()),
+        )
+        logger.info(
+            "[CHECK][INFO] movies.market_coverage_eligible_rows=%d",
+            int(self.df["is_market_coverage_eligible"].sum()),
+        )
+        logger.info(
+            "[CHECK][INFO] movies.recommendation_eligible_reported_rows=%d",
+            int(self.df["is_recommendation_eligible"].sum()),
         )
         logger.info(
             "[CHECK][SUMMARY] movies -> pass=%d warn=%d",
@@ -384,6 +446,62 @@ def ensure_schema(engine, schema_name: str) -> None:
         conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema_name}"))
 
 
+def _quote_ident(identifier: str) -> str:
+    return f'"{identifier.replace(chr(34), chr(34) * 2)}"'
+
+
+def _pandas_dtype_to_postgres(dtype) -> str:
+    if pd.api.types.is_bool_dtype(dtype):
+        return "boolean"
+    if pd.api.types.is_integer_dtype(dtype):
+        return "bigint"
+    if pd.api.types.is_float_dtype(dtype):
+        return "double precision"
+    if pd.api.types.is_datetime64_any_dtype(dtype):
+        return "timestamp"
+    if pd.api.types.is_timedelta64_dtype(dtype):
+        return "interval"
+    return "text"
+
+
+def _ensure_table_has_df_columns(engine, schema_name: str, table_name: str, df: pd.DataFrame) -> None:
+    inspector = inspect(engine)
+    existing_cols = {
+        col["name"].lower() for col in inspector.get_columns(table_name, schema=schema_name)
+    }
+    table_ident = f"{_quote_ident(schema_name)}.{_quote_ident(table_name)}"
+
+    added = 0
+    with engine.begin() as conn:
+        for col_name in df.columns:
+            if col_name.lower() in existing_cols:
+                continue
+            pg_type = _pandas_dtype_to_postgres(df[col_name].dtype)
+            col_ident = _quote_ident(col_name)
+            conn.execute(
+                text(
+                    f"ALTER TABLE {table_ident} ADD COLUMN IF NOT EXISTS {col_ident} {pg_type}"
+                )
+            )
+            existing_cols.add(col_name.lower())
+            added += 1
+            logger.info(
+                "Added missing column %s.%s.%s (%s) to match pandas output schema.",
+                schema_name,
+                table_name,
+                col_name,
+                pg_type,
+            )
+
+    if added:
+        logger.info(
+            "Schema sync complete for %s.%s: %d column(s) added.",
+            schema_name,
+            table_name,
+            added,
+        )
+
+
 def write_table(engine, df: pd.DataFrame, table_name: str) -> None:
     """
     Write DataFrame to target table without dropping the table object.
@@ -394,16 +512,43 @@ def write_table(engine, df: pd.DataFrame, table_name: str) -> None:
     - Truncating + appending keeps dependencies valid across reruns.
     """
     table_exists = inspect(engine).has_table(table_name, schema=SCHEMA)
+    qualified = f'{_quote_ident(SCHEMA)}.{_quote_ident(table_name)}'
+    backup = f'{_quote_ident(SCHEMA)}.{_quote_ident(f"_{table_name}_backup")}'
 
     if table_exists:
+        _ensure_table_has_df_columns(engine, SCHEMA, table_name, df)
         with engine.begin() as conn:
-            conn.execute(text(f'TRUNCATE TABLE "{SCHEMA}"."{table_name}"'))
+            conn.execute(text(f"DROP TABLE IF EXISTS {backup}"))
+            conn.execute(text(f"CREATE TABLE {backup} AS SELECT * FROM {qualified}"))
+            conn.execute(text(f"TRUNCATE TABLE {qualified}"))
         write_mode = "append"
-        logger.info("Truncated existing table %s.%s before load.", SCHEMA, table_name)
+        logger.info(
+            "Snapshotted and truncated existing table %s.%s before load.",
+            SCHEMA,
+            table_name,
+        )
     else:
         write_mode = "fail"
 
-    df.to_sql(table_name, con=engine, schema=SCHEMA, if_exists=write_mode, index=False)
+    try:
+        df.to_sql(table_name, con=engine, schema=SCHEMA, if_exists=write_mode, index=False)
+    except Exception:
+        if table_exists:
+            logger.error(
+                "Pandas write failed for %s.%s, restoring from backup snapshot.",
+                SCHEMA,
+                table_name,
+            )
+            with engine.begin() as conn:
+                conn.execute(text(f"TRUNCATE TABLE {qualified}"))
+                conn.execute(text(f"INSERT INTO {qualified} SELECT * FROM {backup}"))
+                conn.execute(text(f"DROP TABLE IF EXISTS {backup}"))
+        raise
+    else:
+        if table_exists:
+            with engine.begin() as conn:
+                conn.execute(text(f"DROP TABLE IF EXISTS {backup}"))
+
     logger.info("Wrote %d rows → %s.%s", len(df), SCHEMA, table_name)
 
 
@@ -420,6 +565,20 @@ def run_csv_step(
     write_table(engine, clean_df, table_name)
 
 
+def run_table_step(
+    engine,
+    source_schema: str,
+    source_table: str,
+    table_name: str,
+    processor_factory: Callable[[pd.DataFrame], object],
+) -> None:
+    """Read from Postgres table, process via processor class, and write target table."""
+    raw_df = pd.read_sql_table(source_table, con=engine, schema=source_schema)
+    logger.info("Read %d rows from %s.%s", len(raw_df), source_schema, source_table)
+    clean_df = processor_factory(raw_df).process()
+    write_table(engine, clean_df, table_name)
+
+
 # ===================================================================
 # Main
 # ===================================================================
@@ -431,8 +590,17 @@ def main() -> None:
 
     engine = get_engine()
     ensure_schema(engine, SCHEMA)
-
-    run_csv_step(engine, "movies_main.csv", "movies", MovieProcessor)
+    
+    # Check if enriched movies exist in bronze schema (from spark_enrich)
+    inspector = inspect(engine)
+    bronze_tables = {table.lower() for table in inspector.get_table_names(schema="bronze")}
+    
+    if "movies_enriched" in bronze_tables:
+        logger.info("Found bronze.movies_enriched from enrichment pipeline")
+        run_table_step(engine, "bronze", "movies_enriched", "movies", MovieProcessor)
+    else:
+        logger.info("bronze.movies_enriched not found; reading from CSV")
+        run_csv_step(engine, "movies_main.csv", "movies", MovieProcessor)
 
     ratings_path = require_file(PROCESSED_DIR / "ratings.json")
     ratings_clean = RatingProcessor(ratings_path).process()
