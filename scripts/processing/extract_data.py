@@ -11,6 +11,8 @@ PROCESSED_DIR = os.path.join(_DATA_DIR, "processed")
 
 
 def extract_zip(zip_filename: str) -> None:
+    # Normalize the supplied capstone archive into individual files under
+    # data/processed so the ingestion step can load them one by one.
     zip_path = os.path.join(RAW_DIR, zip_filename)
 
     if not os.path.exists(zip_path):
@@ -37,6 +39,8 @@ def extract_zip(zip_filename: str) -> None:
                 continue
 
             try:
+                # Stream the zip member directly into the processed folder
+                # instead of extracting nested directory structures.
                 with zf.open(member) as src, open(target_path, "wb") as dst:
                     dst.write(src.read())
                 print(f"[OK] Extracted -> {target_path}")
