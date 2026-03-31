@@ -27,6 +27,8 @@ EXT_TMDB_CHUNK_SIZE = int(os.environ.get("EXT_TMDB_CHUNK_SIZE", "50000"))
 
 
 def get_engine():
+    # Bronze ingestion is mostly "land source files as tables", so SQLAlchemy
+    # and pandas are sufficient here.
     conn_str = (
         f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
     )
@@ -39,6 +41,7 @@ def ensure_schema(engine, schema_name: str) -> None:
 
 
 def load_csv(engine, file_path: Path, table_name: str) -> None:
+    # Small source files can be loaded in a single pandas DataFrame.
     if not file_path.exists():
         print(f"[SKIP] Missing file: {file_path}")
         return
@@ -49,6 +52,8 @@ def load_csv(engine, file_path: Path, table_name: str) -> None:
 
 
 def load_csv_chunked(engine, file_path: Path, table_name: str, chunk_size: int) -> None:
+    # The external TMDB benchmark file is much larger, so chunking prevents a
+    # one-shot load from consuming unnecessary memory.
     if not file_path.exists():
         print(f"[SKIP] Missing file: {file_path}")
         return
@@ -69,6 +74,8 @@ def load_csv_chunked(engine, file_path: Path, table_name: str, chunk_size: int) 
 
 
 def load_ratings_json(engine, file_path: Path, table_name: str) -> None:
+    # Flatten the nested ratings payload up front so downstream steps can
+    # treat ratings like a normal table rather than reparsing JSON.
     if not file_path.exists():
         print(f"[SKIP] Missing file: {file_path}")
         return
@@ -98,9 +105,13 @@ def main() -> None:
     engine = get_engine()
     ensure_schema(engine, SCHEMA)
 
+    # Land the three project source files in bronze with minimal reshaping.
     load_csv(engine, PROCESSED_DIR / "movies_main.csv", "movies_main")
     load_csv(engine, PROCESSED_DIR / "movie_extended.csv", "movie_extended")
     load_ratings_json(engine, PROCESSED_DIR / "ratings.json", "ratings")
+
+    # Load the external benchmark separately because Spark will use it later to
+    # enrich missing budget values in the core movie table.
     load_csv_chunked(
         engine,
         RAW_DIR / EXT_TMDB_FILENAME,
