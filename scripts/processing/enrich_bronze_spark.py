@@ -68,6 +68,8 @@ def sqlalchemy_url() -> str:
 
 
 def create_spark() -> SparkSession:
+    # Spark is used here because the external benchmark join and imputation
+    # logic are heavier than the simple file-loading steps.
     return (
         SparkSession.builder.appName("movie-analytics-bronze-enrichment")
         .config("spark.jars.packages", "org.postgresql:postgresql:42.7.3")
@@ -250,6 +252,8 @@ def try_cast(col_name: str, target_type: str):
 
 
 def build_enriched_movies(df_orig, df_ext):
+    # Normalize the original movie data into typed budget/revenue/date columns
+    # that can be matched more reliably to the external benchmark.
     orig = (
         df_orig.select("id", "title", "release_date", "budget", "revenue")
         .withColumn("id", try_cast("id", "bigint"))
@@ -262,6 +266,8 @@ def build_enriched_movies(df_orig, df_ext):
         .persist(StorageLevel.MEMORY_AND_DISK)
     )
 
+    # Prepare the external TMDB benchmark in the same shape so the join tiers
+    # can compare like-for-like fields.
     ext_prepared = (
         df_ext.select("title", "release_date", "budget", "revenue")
         .withColumn("title_norm", normalize_title("title"))
@@ -300,6 +306,8 @@ def build_enriched_movies(df_orig, df_ext):
     )
 
     # --- 3-tier join with year tolerance ---
+    # Each tier only processes the rows that failed the previous tier. This
+    # keeps the match logic strict before it becomes more permissive.
 
     # Tier 1: Title + exact year
     joined_year_exact = orig.alias("o").join(
@@ -394,7 +402,8 @@ def build_enriched_movies(df_orig, df_ext):
         F.when(F.col("orig_budget") > 0, F.col("orig_budget")),
         F.when(F.col("ext_budget") > 0, F.col("ext_budget")),
     )
-    # Revenue is never imputed/backfilled; keep only originally reported values.
+    # Revenue is intentionally stricter than budget: we never backfill it from
+    # the external source because ROI should still rest on reported revenue.
     final_revenue = F.when(F.col("orig_revenue") > 0, F.col("orig_revenue"))
 
     used_ext_budget = (
@@ -425,6 +434,8 @@ def build_enriched_movies(df_orig, df_ext):
     #   1) Ratio method (median budget/revenue) when available — scales with revenue anchor
     #   2) Median budget fallback when ratio unavailable
     #   3) Never impute rows without revenue (no anchor)
+    # This keeps imputation anchored in observed financial behavior instead of
+    # inventing budgets for rows with no revenue signal at all.
 
     ratio_row = (
         base_financials.where(
@@ -527,6 +538,8 @@ def build_enriched_movies(df_orig, df_ext):
     )
 
     # --- Metrics logging ---
+    # These metrics act as a lightweight audit of how much enrichment and
+    # imputation actually happened in this run.
     metrics_row = (
         base.agg(
             F.count("*").alias("total_rows"),
@@ -575,6 +588,8 @@ def build_enriched_movies(df_orig, df_ext):
         method_name = row["budget_imputation_method"] or "none"
         logger.info("[ENRICH][IMPUTE_METHOD] method=%s rows=%d", method_name, row["count"])
 
+    # Split the enriched output into a movie table used by downstream cleaning
+    # and a compact audit table that preserves enrichment lineage.
     # FIX 1: budget_reported added to movies_out select.
     # Was previously missing, causing AnalysisException on write because the JDBC
     # target schema included budget_reported but the DataFrame did not.
@@ -630,6 +645,8 @@ def main() -> None:
     movies_main = read_table(spark, SOURCE_SCHEMA, SOURCE_MOVIES_TABLE)
     ext_tmdb = read_table(spark, SOURCE_SCHEMA, SOURCE_EXT_TABLE)
 
+    # Build both the usable movie output and the audit output in one pass so
+    # every enrichment decision remains traceable after the run.
     movies_out, audit_out = build_enriched_movies(movies_main, ext_tmdb)
     write_table(movies_out, TARGET_SCHEMA, TARGET_TABLE)
     write_table(audit_out, TARGET_SCHEMA, TARGET_AUDIT_TABLE)
