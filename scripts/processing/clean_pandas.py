@@ -156,6 +156,8 @@ class MovieProcessor:
 
     def process(self) -> pd.DataFrame:
         """Run the full cleaning pipeline and return the cleaned DataFrame."""
+        # Order matters: normalize identifiers and dates first, then clean the
+        # financial fields, then derive the eligibility flags used downstream.
         self._deduplicate()
         self._cast_id()
         self._standardize_release_date()
@@ -206,6 +208,8 @@ class MovieProcessor:
 
     def _ensure_optional_financial_columns(self) -> None:
         """Backfill optional enrichment columns so downstream models can rely on stable schema."""
+        # These fields are present when the Spark enrichment step has run. When
+        # it has not, we create safe defaults so the silver schema stays stable.
         if "budget_reported" not in self.df.columns:
             self.df["budget_reported"] = self.df["budget"]
         else:
@@ -224,6 +228,9 @@ class MovieProcessor:
             self.df["budget_imputation_method"] = None
 
     def _add_flags(self) -> None:
+        # Preserve the distinction between the final budget value and the
+        # originally reported budget so imputed rows are not misclassified as
+        # fully reported in the recommendation layer.
         # Derive reported-budget provenance from the pre-imputation column when present.
         # Using final budget would incorrectly mark imputed budgets as "reported".
         if "budget_reported" in self.df.columns:
@@ -247,6 +254,8 @@ class MovieProcessor:
             & (self.df["budget"] >= 10000)
             & (self.df["revenue"] > 0)
         )
+        # Recommendation eligibility is intentionally stricter because the Power BI
+        # investment story should only use rows with reported budget and revenue.
         recommendation_eligible = (
             self.df["is_budget_reported"]
             & self.df["is_revenue_reported"]
@@ -516,6 +525,8 @@ def write_table(engine, df: pd.DataFrame, table_name: str) -> None:
     backup = f'{_quote_ident(SCHEMA)}.{_quote_ident(f"_{table_name}_backup")}'
 
     if table_exists:
+        # Keep the table object intact across reruns so downstream views/refs
+        # are not broken by a DROP TABLE side effect.
         _ensure_table_has_df_columns(engine, SCHEMA, table_name, df)
         with engine.begin() as conn:
             conn.execute(text(f"DROP TABLE IF EXISTS {backup}"))
@@ -559,6 +570,8 @@ def run_csv_step(
     processor_factory: Callable[[pd.DataFrame], object],
 ) -> None:
     """Read CSV, process via processor class, and write target table."""
+    # Use this path for file-based sources that have not already been loaded
+    # into an intermediate bronze table.
     file_path = require_file(PROCESSED_DIR / file_name)
     raw_df = pd.read_csv(file_path)
     clean_df = processor_factory(raw_df).process()
@@ -573,6 +586,8 @@ def run_table_step(
     processor_factory: Callable[[pd.DataFrame], object],
 ) -> None:
     """Read from Postgres table, process via processor class, and write target table."""
+    # Use this path when an upstream step, such as Spark enrichment, has already
+    # produced a better bronze table than the original raw file.
     raw_df = pd.read_sql_table(source_table, con=engine, schema=source_schema)
     logger.info("Read %d rows from %s.%s", len(raw_df), source_schema, source_table)
     clean_df = processor_factory(raw_df).process()
@@ -591,7 +606,8 @@ def main() -> None:
     engine = get_engine()
     ensure_schema(engine, SCHEMA)
     
-    # Check if enriched movies exist in bronze schema (from spark_enrich)
+    # Prefer the Spark-enriched movie table when available. Fall back to the
+    # original CSV so the cleaning step can still run independently.
     inspector = inspect(engine)
     bronze_tables = {table.lower() for table in inspector.get_table_names(schema="bronze")}
     
@@ -606,6 +622,8 @@ def main() -> None:
     ratings_clean = RatingProcessor(ratings_path).process()
     write_table(engine, ratings_clean, "ratings")
 
+    # Extended attributes are cleaned separately because they mainly feed bridge
+    # tables rather than the core financial fact table.
     run_csv_step(engine, "movie_extended.csv", "movie_extended", ExtendedMovieProcessor)
 
     logger.info("=" * 60)
