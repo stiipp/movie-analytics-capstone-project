@@ -212,6 +212,8 @@ def write_table(df, table_name: str) -> None:
 
 def build_mapping(extended, source_column: str, value_name: str):
     # Turn comma-delimited extended attributes into one row per movie/value pair.
+    # This converts denormalized text fields into bridge-ready tables that dbt
+    # can join cleanly in the marts layer.
     return (
         extended.select(
             F.col("id").alias("movie_id"),
@@ -239,6 +241,8 @@ def main() -> None:
     spark.sparkContext.setLogLevel("WARN")
 
     # All mapping outputs are derived from the cleaned extended-attribute table.
+    # Spark handles the repeated explode/trim/deduplicate pattern once here so
+    # dbt receives clean bridge inputs instead of raw comma-delimited strings.
     extended = read_table(spark, "movie_extended")
     movie_genres = build_mapping(extended, "genres", "genre")
     movie_companies = build_mapping(extended, "production_companies", "company")
