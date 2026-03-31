@@ -21,6 +21,9 @@ class Movie:
     is_roi_eligible: bool = field(init=False)
 
     def __post_init__(self):
+        # Centralize the project business rules here so the meaning of
+        # "reported", "market coverage", and "recommendation eligible"
+        # stays explicit even outside the SQL models.
         self.is_budget_reported = self.budget is not None and self.budget > 0
         self.is_revenue_reported = self.revenue is not None and self.revenue > 0
         self.is_market_coverage_eligible = (
@@ -40,12 +43,15 @@ class Movie:
 
     @property
     def roi(self) -> Optional[float]:
+        # Only compute ROI for rows that satisfy the strict financial criteria.
         if self.is_roi_eligible:
             return (self.revenue - self.budget) / self.budget
         return None
 
     @property
     def profit(self) -> Optional[float]:
+        # Profit follows the same guardrail as ROI so downstream logic does not
+        # accidentally treat incomplete financial rows as investable.
         if self.is_roi_eligible:
             return self.revenue - self.budget
         return None
