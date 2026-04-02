@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Movie Analytics Capstone Project
 
 An end-to-end data pipeline that ingests raw movie data into PostgreSQL, enriches and cleans it with Spark and pandas, transforms it through dbt into analytical models, and orchestrates the workflow with Apache Airflow. The final `gold` layer is designed for Power BI reporting.
@@ -511,3 +512,6 @@ The dimensional core makes the project easier to query, explain, and connect to 
 ### Why keep separate schemas by layer?
 
 Distinct schemas make it clear which data is raw, cleaned, intermediate, and analyst-ready. This improves maintainability and matches standard warehouse and dbt practices.
+=======
+# movie-analytics-capstone-project
+>>>>>>> 96000ae952132792761b34b00bda82ef8912445f
