@@ -98,7 +98,7 @@ Schema layout:
 
 ```text
 movie-analytics-capstone-project/
-├── docker-compose.yml                 # Multi-service Docker setup
+├── docker-compose.example.yml         # Example Docker Compose template
 ├── Makefile                           # Manual pipeline commands
 ├── .env.example                       # Example env vars
 ├── airflow/
@@ -113,7 +113,7 @@ movie-analytics-capstone-project/
 │   └── processed/                     # Extracted project files
 ├── dbt/
 │   ├── dbt_project.yml                # dbt project config
-│   ├── profiles.yml                   # dbt connection profiles
+│   ├── profiles.yml                   # Local-only dbt connection profile
 │   ├── packages.yml                   # dbt packages config
 │   ├── analyses/                      # Advanced SQL deliverables
 │   ├── macros/                        # Schema naming + cleanup macros
@@ -381,12 +381,20 @@ cd movie-analytics-capstone-project
 cp .env.example .env
 ```
 
-3. Place input files in the expected locations:
+3. Create your own local Docker Compose file:
+
+```bash
+cp docker-compose.example.yml docker-compose.yml
+```
+
+`docker-compose.yml` is intentionally kept local and should not be committed. Put your own local credentials and overrides there if needed.
+
+4. Place input files in the expected locations:
 
 - `data/raw/project_data.zip`
 - `data/raw/TMDB_movie_dataset_v11.csv` if using the bulk TMDB file
 
-4. Start services:
+5. Start services:
 
 ```bash
 docker compose up -d --build
@@ -400,11 +408,11 @@ This starts:
 - `python-app` container
 - `dbt` container
 
-5. Access the Airflow UI:
+6. Access the Airflow UI:
 
 - URL: `http://localhost:8080`
-- Username: `admin`
-- Password: `admin`
+- Username: value from `AIRFLOW_ADMIN_USERNAME` in `.env`
+- Password: value from `AIRFLOW_ADMIN_PASSWORD` in `.env`
 
 ## Running the Pipeline
 
