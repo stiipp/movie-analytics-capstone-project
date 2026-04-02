@@ -151,6 +151,9 @@ venv.bak/
 # Rope project settings
 .ropeproject
 
+# Local Docker compose 
+docker-compose.yml
+
 # mkdocs documentation
 /site
 
