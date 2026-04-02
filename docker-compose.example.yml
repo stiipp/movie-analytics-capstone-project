@@ -1,0 +1,105 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-app_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: ${POSTGRES_DB:-capstone-movie-analytics}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
+
+  airflow-webserver:
+    build: ./airflow
+    depends_on:
+      - postgres
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-app_user}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-capstone-movie-analytics}
+      AIRFLOW__LOGGING__REMOTE_LOGGING: "False"
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_USER:-app_user}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      DB_NAME: ${POSTGRES_DB:-capstone-movie-analytics}
+      DB_SCHEMA: ${DB_SCHEMA:-bronze}
+      DBT_TARGET_PATH: /tmp/dbt_target
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/datasets:/opt/airflow/datasets
+      - ./airflow/logs:/opt/airflow/logs
+      - ./data:/opt/airflow/data
+      - ./dbt:/opt/airflow/dbt
+      - ./scripts:/opt/airflow/scripts
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "${AIRFLOW_WEBSERVER_PORT:-8080}:8080"
+    command: >-
+      bash -c "airflow db init &&
+      airflow users create
+      --username ${AIRFLOW_ADMIN_USERNAME:-airflow_admin}
+      --password ${AIRFLOW_ADMIN_PASSWORD:-change-me}
+      --firstname ${AIRFLOW_ADMIN_FIRSTNAME:-Airflow}
+      --lastname ${AIRFLOW_ADMIN_LASTNAME:-Admin}
+      --role Admin
+      --email ${AIRFLOW_ADMIN_EMAIL:-airflow-admin@example.com}
+      || true &&
+      airflow webserver"
+
+  airflow-scheduler:
+    build: ./airflow
+    depends_on:
+      - airflow-webserver
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-app_user}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-capstone-movie-analytics}
+      AIRFLOW__LOGGING__REMOTE_LOGGING: "False"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_USER:-app_user}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      DB_NAME: ${POSTGRES_DB:-capstone-movie-analytics}
+      DB_SCHEMA: ${DB_SCHEMA:-bronze}
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/datasets:/opt/airflow/datasets
+      - ./airflow/logs:/opt/airflow/logs
+      - ./data:/opt/airflow/data
+      - ./dbt:/opt/airflow/dbt
+      - ./scripts:/opt/airflow/scripts
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: scheduler
+
+  python-app:
+    build:
+      context: ./scripts
+    depends_on:
+      - postgres
+    restart: on-failure
+    environment:
+      DATA_DIR: /app/data
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_USER:-app_user}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      DB_NAME: ${POSTGRES_DB:-capstone-movie-analytics}
+      DB_SCHEMA: ${DB_SCHEMA:-bronze}
+    volumes:
+      - ./data:/app/data
+
+  dbt:
+    image: ghcr.io/dbt-labs/dbt-postgres:1.7.6
+    working_dir: /usr/app
+    volumes:
+      - ./dbt:/usr/app
+    depends_on:
+      - postgres
+    command: tail -f /dev/null
+
+volumes:
+  postgres_data:
