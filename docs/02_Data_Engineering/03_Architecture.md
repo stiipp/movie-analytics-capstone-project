@@ -1,4 +1,5 @@
-![Capstone architecture diagram](<../Week 5 Mini Pipeline Architecture Diagram-Capstone Architecture.drawio.png>)
+<img width="1908" height="421" alt="Capstone Architecture Diagram" src="https://github.com/user-attachments/assets/fd1acaca-d1ee-431e-84c2-f07e95b89715" />
+
 ## 3.1 Architecture Overview
 
 This project uses a local, Docker-based modern data stack to turn raw movie files into a reporting-ready warehouse for Power BI.
