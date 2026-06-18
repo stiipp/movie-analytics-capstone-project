@@ -519,6 +519,4 @@ The dimensional core makes the project easier to query, explain, and connect to 
 ### Why keep separate schemas by layer?
 
 Distinct schemas make it clear which data is raw, cleaned, intermediate, and analyst-ready. This improves maintainability and matches standard warehouse and dbt practices.
-=======
-# movie-analytics-capstone-project
->>>>>>> 96000ae952132792761b34b00bda82ef8912445f
+
